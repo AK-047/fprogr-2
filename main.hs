@@ -1,13 +1,19 @@
 import Data.Matrix as M
 import Data.Vector as V
 import System.Random
+import Data.Maybe
+import Control.Monad
+import Data.Conduit
+import Control.Monad.IO.Class
+import System.IO
+
+
 
 
 main = do
     let testPercent = 0.80
     let test = []
-    b <- rec test
-    print b
+    source "butterfly.txt" $$ conduit test =$ sink
     
 
 isForTest :: Float -> IO Bool
@@ -16,13 +22,40 @@ isForTest percentage = do
     return (a > percentage)
 
 
-teach a test percentage = isForTest percentage >>= (\val -> if val then return (a:test) else return (test))
+teach a test percentage = isForTest percentage >>= (\val -> if val then return ((a:test,val)) else return ((test,val)))
                                                                                              --teaching
+source path = do
+    file <- liftIO $ openFile path ReadMode
+    readToEnd file
+    where
+        readToEnd file = do
+            eof <- liftIO $ hIsEOF file
+            if eof
+                then return ()
+                else do
+                    line <- liftIO $ hGetLine file
+                    yield line
+                    readToEnd file
+        
+conduit testVectors = do
+    mx <- await
+    case mx of
+        Nothing -> do
+        	--testing
+        	--testing
+        	--testing
+        	return ()
+        Just x -> do
+            (testVectors, wasAdded) <- liftIO $ teach x testVectors 0.8
+            liftIO $ print $ testVectors
+            liftIO $ print $ wasAdded
+            yield x
+            conduit testVectors
 
-
-
-
-rec test = do
-    let nextRow = Prelude.length test --here goes reading 
-    test <- teach nextRow test 0.5
-    if (Prelude.length test < 5) then rec test else return test
+sink = do
+    mx <- await
+    case mx of
+        Nothing -> return ()
+        Just x -> do
+            liftIO $ putStrLn $ x
+            sink

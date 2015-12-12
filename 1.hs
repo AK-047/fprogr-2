@@ -1,7 +1,4 @@
 {-# LANGUAGE DeriveDataTypeable #-}
-
-module IO where
-
 import System.Console.CmdArgs
 import Data.List.Split
 import Text.Regex
@@ -11,6 +8,8 @@ import Data.Conduit
 import Control.Monad.IO.Class
 import System.IO
 
+
+
 source path = do
 	file <- liftIO $ openFile path ReadMode
 	readToEnd file
@@ -19,7 +18,7 @@ source path = do
 			eof <- liftIO $ hIsEOF file
 			if eof
 				then return ()
-				else do	
+				else do
 					line <- liftIO $ hGetLine file
 					yield line
 					readToEnd file
