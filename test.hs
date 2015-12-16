@@ -34,26 +34,26 @@ calculateDispersion = do
             (1/(count - 1)) * (sumSqr + count*((median)^2) - 2*median*sum)
 
 
-updateOrAddByKey :: (M.Map String [M.Map String Float]) -> String -> String -> Float -> (M.Map String [M.Map String Float])
-updateOrAddByKey dictionary globalKey localKey value = do
-    let result = M.lookup globalKey dictionary
-    case result of
-        Just result -> M.update localUpdate globalKey dictionary
-        Nothing -> M.insert globalKey [M.fromList [(localKey, value)]] dictionary
-    M.fromList [("sasairises-1", [(M.fromList [("SumKey", 3.0), ("SumSqrKey", 5.0), ("CountKey", 2.0)]), (M.fromList [("SumKey", 6.0), ("SumSqrKey", 20.0), ("CountKey", 2.0)])])]
-    where
-        localUpdate list = do
-            index <- List.findIndex emptyElementCondition list
-            case index of
-                Just index -> Fol.toList $ Seq.update index appendToMap $ Seq.fromList list
-        emptyElementCondition innerMap = do
-            result <- M.lookup innerMap localKey
-            case result of
-                Just result ->
-                    return True
-                Nothing ->
-                    return False
-        appendToMap innerMap = M.insert localKey value innerMap
+--updateOrAddByKey :: (M.Map String [M.Map String Float]) -> String -> String -> Float -> (M.Map String [M.Map String Float])
+--updateOrAddByKey dictionary globalKey localKey value = do
+--    let result = M.lookup globalKey dictionary
+--    case result of
+--        Just result -> M.update localUpdate globalKey dictionary
+--        Nothing -> M.insert globalKey [M.fromList [(localKey, value)]] dictionary
+--    M.fromList [("sasairises-1", [(M.fromList [("SumKey", 3.0), ("SumSqrKey", 5.0), ("CountKey", 2.0)]), (M.fromList [("SumKey", 6.0), ("SumSqrKey", 20.0), ("CountKey", 2.0)])])]
+--    where
+--        localUpdate list = do
+--            index <- List.findIndex emptyElementCondition list
+--            case index of
+--                Just index -> Fol.toList $ Seq.update index appendToMap $ Seq.fromList list
+--        emptyElementCondition innerMap = do
+--            result <- M.lookup innerMap localKey
+--            case result of
+--                Just result ->
+--                    return True
+--                Nothing ->
+--                    return False
+--        appendToMap innerMap = M.insert localKey value innerMap
 
    
 
