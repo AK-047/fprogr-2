@@ -7,9 +7,11 @@ import Control.Monad.IO.Class
 import System.IO
 import Data.List.Split
 import qualified Data.Map.Strict as M
-import Control.Monad.State.Lazy
+import Control.Monad.State.Lazy as S
 import Options
 import Text.Printf
+import Control.Parallel.Strategies
+import Control.Monad.Par as P
 
 
 sumKey :: String
@@ -142,14 +144,25 @@ sink = do
             return (res,result)
 
 
+spawn :: NFData a => Par a -> Par (IVar a)
+spawn p = do
+    i <- new
+    fork (do x <- p; P.put i x)
+    return i
+
+parMap :: NFData b => (a -> b) -> [a] -> Par [b]
+parMap f as = do
+    ibs <- mapM (Main.spawn . return . f) as
+    mapM P.get ibs
+
 
 calculateDispersion :: State (M.Map String [M.Map String Double]) (M.Map String [M.Map String Double])
 calculateDispersion = do
-    dictionary <- get
+    dictionary <- S.get
     return $ M.map (calculateDispersionList) dictionary
     where
-        calculateDispersionList listMap = do
-            map calculateDispersionInner listMap
+        calculateDispersionList listMap =
+            P.runPar $ Main.parMap calculateDispersionInner listMap
         calculateDispersionInner innerMap = do
             let count = (innerMap M.! countKey)
             let sum = innerMap M.! sumKey
