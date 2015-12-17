@@ -44,23 +44,23 @@ updateWithKey a v (x:xs)
     | x == sumSqrKey = updateWithKey (M.adjust (+v**2) x a) v xs
 
 
-isForTest :: Float -> IO Bool
+isForTest :: Double -> IO Bool
 isForTest percentage = do
-    a <- (randomIO :: IO Float)
+    a <- (randomIO :: IO Double)
     return (a > percentage)
 
 
 teach a test percentage = isForTest percentage >>= (\val -> if val then return (((readX a):test,val)) else return ((test,val)))
                                                                                         --teaching
-readX :: String -> M.Map String [Float]
-readX x = M.singleton (last splitted) (readFloat $ init splitted)
+readX :: String -> M.Map String [Double]
+readX x = M.singleton (last splitted) (readDouble $ init splitted)
     where
         splitted = splitOn "," x
 
 
 
-readFloat :: [String] -> [Float]
-readFloat = map read
+readDouble :: [String] -> [Double]
+readDouble = map read
 
 source path = do
     file <- liftIO $ openFile path ReadMode
@@ -84,7 +84,7 @@ conduit testVectors dict = do
         	--testing
             yield (dict,testVectors)
         Just x -> do
-            (testVectors, wasAdded) <- liftIO $ teach x testVectors 0.5
+            (testVectors, wasAdded) <- liftIO $ teach x testVectors 0.7
             --liftIO $ print $ testVectors
             --yield x
             if wasAdded then conduit testVectors dict else conduit testVectors $ updateClassAtrributes (readX x) dict
@@ -94,18 +94,23 @@ sink = do
     case mx of
         Nothing -> return ()
         Just x -> do
-            --liftIO $ print $ M.showTreeWith (\k x -> show (k,x)) False True x
             let (dict,test) = x
             let (result, _) = runState calculateDispersion dict
-            --let (a,b) = runState calculateProbability (result,"sasi")
-            a <- liftIO $ singleProbability (result M.! "0")
-            liftIO $ print $ result
-            liftIO $ print $ a
+
+            let probabilitiesMap = M.map (singleProbability test) result
+
+            liftIO $ print $ "--------------------------probabilitiesMap"
+            let res = getClassBelongings probabilitiesMap test
+            liftIO $ print $ res
+            liftIO $ print $ "--------------------------test"
+            liftIO $ print $ probabilitiesMap
+
+
             sink
 
 
 
-calculateDispersion :: State (M.Map String [M.Map String Float]) (M.Map String [M.Map String Float])
+calculateDispersion :: State (M.Map String [M.Map String Double]) (M.Map String [M.Map String Double])
 calculateDispersion = do
     dictionary <- get
     return $ M.map (calculateDispersionList) dictionary
@@ -120,13 +125,26 @@ calculateDispersion = do
             M.insert dispersionKey ((1/(count - 1)) * (sumSqr + count*((median)^2) - 2*median*sum)) innerMap
 
 
-calculateProbability :: State (M.Map String [M.Map String Float], [a]) Float
-calculateProbability = do
-	dict <- get
-	return 0
+singleProbability :: [M.Map String [Double]] -> [M.Map String Double] -> [Double]
+singleProbability testVectors m = 
+	map (getProb m) testVectors
+	where
+		getProb attrMap vectorMap = getInnerProb attrMap (getVector vectorMap)
+		getVector vMap = snd (M.elemAt 0 vMap)
+		getInnerProb attrMap vectorList = foldl (*) 1 $ zipWith (calcProb) attrMap vectorList
+		calcProb singleAttrMap singleX = (1/((2*pi*(dispersion singleAttrMap)^2))**(1/2)) * (exp (- ((singleX - (average singleAttrMap))^2) / (2 * (dispersion singleAttrMap)^2)))
+		dispersion x = x M.! dispersionKey
+		average x = (x M.! sumKey) / (x M.! countKey)
 
 
-singleProbability :: [M.Map String Float] -> IO Float
-singleProbability m = do
-	let sigma = m !! 0 M.! dispersionKey
-	return sigma
+getClassBelongings :: M.Map String [Double] -> [M.Map String [Double]] -> Double
+getClassBelongings probabilitiesMap testVectors = 
+	sum (getErrorsList) / (fromIntegral (length getErrorsList))
+	where
+		getErrorsList = zipWith (\label vectorMap -> if label == (fst (M.elemAt 0 vectorMap)) then 0 else 1) getClassLabels testVectors
+		getClassLabels = M.foldlWithKey (findMax (snd initialPair) (fst initialPair)) [] probabilitiesMap
+		findMax maxList maxKey memo key probabilitiesList = zipWith (\x y -> if x >= y then maxKey else key) maxList probabilitiesList
+		initialPair = (M.elemAt 0 probabilitiesMap)
+
+
+
