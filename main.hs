@@ -9,6 +9,7 @@ import Data.List.Split
 import qualified Data.Map.Strict as M
 import Control.Monad.State.Lazy
 import Options
+import Text.Printf
 
 
 sumKey :: String
@@ -29,6 +30,7 @@ data MainOptions = MainOptions
     , optDelimiter :: String
     ,optOut :: String
     ,optAttempts :: Int
+    ,optPercent :: Double
     }
 
 instance Options MainOptions where
@@ -40,7 +42,9 @@ instance Options MainOptions where
         <*> simpleOption "out" ""
             "Output File"    
         <*> simpleOption "attempts" 2
-            "Attempts number"   
+            "Attempts number"
+        <*> simpleOption "percent" 80
+            "Teaching percent"   
 -- Command line options
 
 
@@ -49,19 +53,30 @@ instance Options MainOptions where
 main = runCommand $ \opts args -> do
     let fileName = (optInput opts)
     let delimiter = (optDelimiter opts)
+    let percent = (optPercent opts)
 
-    result <- source "butterfly.txt" $$ conduit [] (M.fromList []) =$ sink
-    startAttempts (take ((optAttempts opts)-1) $ repeat 0) result
+    result <- source fileName $$ conduit [] (M.fromList []) percent =$ sink
+    startAttempts (take ((optAttempts opts)-1) $ repeat 0) result fileName percent
 
 
 
 
-startAttempts [] best = do
-    print best
-startAttempts (x:xs) best = do
-    result <- source "butterfly.txt" $$ conduit [] (M.fromList []) =$ sink
-    if (fst result) < (fst best) then startAttempts xs result else startAttempts xs best
+startAttempts [] best file percent = do
+    printResult (snd best)
+startAttempts (x:xs) best file percent = do
+    result <- source file $$ conduit [] (M.fromList []) percent =$ sink
+    if (fst result) < (fst best) then startAttempts xs result file percent else startAttempts xs best file percent
     
+
+
+printResult result = do
+    putStr  $ M.foldlWithKey getClassWithAttrs "" result
+    where
+        getClassWithAttrs res k val = res ++ k ++":" ++ (snd (getAttrs val)) ++ "\n"
+        getAttrs m = foldl composeAttrs (1,"") m
+        composeAttrs (number,res) val = (number + 1, res ++ "-" ++ (show number) ++ "(" ++ (show (val M.! dispersionKey)) ++ "," ++ (show ((val M.! sumKey) / (val M.! countKey))) ++ ")")
+
+
 
 updateClassAtrributes x m = 
     update
@@ -107,14 +122,14 @@ source path = do
                     readToEnd file
 
 
-conduit testVectors dict = do
+conduit testVectors dict percent = do
     mx <- await
     case mx of
         Nothing -> do
             yield (dict,testVectors)
         Just x -> do
-            (testVectors, wasAdded) <- liftIO $ teach x testVectors 0.7
-            if wasAdded then conduit testVectors dict else conduit testVectors $ updateClassAtrributes (readX x) dict
+            (testVectors, wasAdded) <- liftIO $ teach x testVectors percent
+            if wasAdded then conduit testVectors dict percent else conduit testVectors (updateClassAtrributes (readX x) dict) percent
 
 sink = do
     mx <- await
@@ -124,8 +139,6 @@ sink = do
             let (result, _) = runState calculateDispersion dict
             let probabilitiesMap = M.map (singleProbability test) result
             let res = getClassBelongings probabilitiesMap test
-            liftIO $ print $ "attempt:"
-            liftIO $ print $ res
             return (res,result)
 
 
