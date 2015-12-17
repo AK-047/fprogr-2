@@ -8,6 +8,7 @@ import System.IO
 import Data.List.Split
 import qualified Data.Map.Strict as M
 import Control.Monad.State.Lazy
+import Options
 
 
 sumKey :: String
@@ -22,11 +23,45 @@ sumSqrKey = "SumSqrKey"
 dispersionKey :: String
 dispersionKey = "DispersionKey"
 
-main = do
-    let testPercent = 0.80
-    let test = []
-    let dictionary = M.fromList []
-    source "butterfly.txt" $$ conduit test dictionary =$ sink
+
+data MainOptions = MainOptions
+    { optInput :: String
+    , optDelimiter :: String
+    ,optOut :: String
+    ,optAttempts :: Int
+    }
+
+instance Options MainOptions where
+    defineOptions = pure MainOptions
+        <*> simpleOption "input" "butterfly.txt"
+            "CSV-file path."
+        <*> simpleOption "delimiter" ","
+            "CSV delimeter."
+        <*> simpleOption "out" ""
+            "Output File"    
+        <*> simpleOption "attempts" 2
+            "Attempts number"   
+-- Command line options
+
+
+
+
+main = runCommand $ \opts args -> do
+    let fileName = (optInput opts)
+    let delimiter = (optDelimiter opts)
+
+    result <- source "butterfly.txt" $$ conduit [] (M.fromList []) =$ sink
+    startAttempts (take ((optAttempts opts)-1) $ repeat 0) result
+
+
+
+
+startAttempts [] best = do
+    print best
+startAttempts (x:xs) best = do
+    result <- source "butterfly.txt" $$ conduit [] (M.fromList []) =$ sink
+    if (fst result) < (fst best) then startAttempts xs result else startAttempts xs best
+    
 
 updateClassAtrributes x m = 
     update
@@ -52,15 +87,11 @@ isForTest percentage = do
 
 teach a test percentage = isForTest percentage >>= (\val -> if val then return (((readX a):test,val)) else return ((test,val)))
                                                                                         --teaching
-readX :: String -> M.Map String [Double]
-readX x = M.singleton (last splitted) (readDouble $ init splitted)
-    where
-        splitted = splitOn "," x
-
-
 
 readDouble :: [String] -> [Double]
 readDouble = map read
+
+
 
 source path = do
     file <- liftIO $ openFile path ReadMode
@@ -75,38 +106,27 @@ source path = do
                     yield line
                     readToEnd file
 
+
 conduit testVectors dict = do
     mx <- await
     case mx of
         Nothing -> do
-        	--testing
-        	--testing
-        	--testing
             yield (dict,testVectors)
         Just x -> do
             (testVectors, wasAdded) <- liftIO $ teach x testVectors 0.7
-            --liftIO $ print $ testVectors
-            --yield x
             if wasAdded then conduit testVectors dict else conduit testVectors $ updateClassAtrributes (readX x) dict
 
 sink = do
     mx <- await
     case mx of
-        Nothing -> return ()
         Just x -> do
             let (dict,test) = x
             let (result, _) = runState calculateDispersion dict
-
             let probabilitiesMap = M.map (singleProbability test) result
-
-            liftIO $ print $ "--------------------------probabilitiesMap"
             let res = getClassBelongings probabilitiesMap test
+            liftIO $ print $ "attempt:"
             liftIO $ print $ res
-            liftIO $ print $ "--------------------------test"
-            liftIO $ print $ probabilitiesMap
-
-
-            sink
+            return (res,result)
 
 
 
@@ -127,24 +147,28 @@ calculateDispersion = do
 
 singleProbability :: [M.Map String [Double]] -> [M.Map String Double] -> [Double]
 singleProbability testVectors m = 
-	map (getProb m) testVectors
-	where
-		getProb attrMap vectorMap = getInnerProb attrMap (getVector vectorMap)
-		getVector vMap = snd (M.elemAt 0 vMap)
-		getInnerProb attrMap vectorList = foldl (*) 1 $ zipWith (calcProb) attrMap vectorList
-		calcProb singleAttrMap singleX = (1/((2*pi*(dispersion singleAttrMap)^2))**(1/2)) * (exp (- ((singleX - (average singleAttrMap))^2) / (2 * (dispersion singleAttrMap)^2)))
-		dispersion x = x M.! dispersionKey
-		average x = (x M.! sumKey) / (x M.! countKey)
+    map (getProb m) testVectors
+    where
+        getProb attrMap vectorMap = getInnerProb attrMap (getVector vectorMap)
+        getVector vMap = snd (M.elemAt 0 vMap)
+        getInnerProb attrMap vectorList = foldl (*) 1 $ zipWith (calcProb) attrMap vectorList
+        calcProb singleAttrMap singleX = (1/((2*pi*(dispersion singleAttrMap)^2))**(1/2)) * (exp (- ((singleX - (average singleAttrMap))^2) / (2 * (dispersion singleAttrMap)^2)))
+        dispersion x = x M.! dispersionKey
+        average x = (x M.! sumKey) / (x M.! countKey)
 
 
 getClassBelongings :: M.Map String [Double] -> [M.Map String [Double]] -> Double
 getClassBelongings probabilitiesMap testVectors = 
-	sum (getErrorsList) / (fromIntegral (length getErrorsList))
-	where
-		getErrorsList = zipWith (\label vectorMap -> if label == (fst (M.elemAt 0 vectorMap)) then 0 else 1) getClassLabels testVectors
-		getClassLabels = M.foldlWithKey (findMax (snd initialPair) (fst initialPair)) [] probabilitiesMap
-		findMax maxList maxKey memo key probabilitiesList = zipWith (\x y -> if x >= y then maxKey else key) maxList probabilitiesList
-		initialPair = (M.elemAt 0 probabilitiesMap)
+    sum (getErrorsList) / (fromIntegral (length getErrorsList))
+    where
+        getErrorsList = zipWith (\label vectorMap -> if label == (fst (M.elemAt 0 vectorMap)) then 0 else 1) getClassLabels testVectors
+        getClassLabels = M.foldlWithKey (findMax (snd initialPair) (fst initialPair)) [] probabilitiesMap
+        findMax maxList maxKey memo key probabilitiesList = zipWith (\x y -> if x >= y then maxKey else key) maxList probabilitiesList
+        initialPair = (M.elemAt 0 probabilitiesMap)
 
 
 
+readX :: String -> M.Map String [Double]
+readX x = M.singleton (last splitted) (readDouble $ init splitted)
+    where
+        splitted = splitOn "," x
